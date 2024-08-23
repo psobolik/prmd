@@ -1,0 +1,28 @@
+[package]
+name = "prmd"
+version = "0.1.0"
+authors = ["Paul Sobolik <psobolik@zoho.com"]
+description = "Convert Markdown to text with ANSI formatting"
+edition = "2021"
+
+[dependencies]
+comrak = "0.27.0"
+
+[dependencies.clap]
+version = "4.5.16"
+optional = true
+features = ["derive"]
+
+[profile.release]
+lto = true
+
+[[bin]]
+name = "prmd"
+required-features = ["cli"]
+doc = false
+
+[features]
+default = []
+cli = ["clap"]
+
+[target]

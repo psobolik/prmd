@@ -91,7 +91,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
             _ => {
                 eprintln!("💔 Unexpected child in Text node: {:#?}", text_node);
                 "💔 Unexpected child in Text node".to_string()
-            },
+            }
         }
     }
     fn thematic_break_node_to_text() -> String {
@@ -260,7 +260,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                     _ => {
                         eprintln!("💔 Unexpected child in Table Row node: {:#?}", child);
                         "💔 Unexpected child in Table Row node".to_string()
-                    },
+                    }
                 })
                 .collect();
             format!("{}\n", row.join(""))
@@ -277,9 +277,9 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                     plain,
                 ),
                 _ => {
-                eprintln!("💔 Unexpected child in Table node: {:#?}", child);
-                "💔 Unexpected child in Table node".to_string()
-                },
+                    eprintln!("💔 Unexpected child in Table node: {:#?}", child);
+                    "💔 Unexpected child in Table node".to_string()
+                }
             })
             .collect();
         format!("{}\n", table.join(""))
@@ -291,6 +291,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
     ) -> String {
         fn item_node_to_text<'a>(
             item_node: &'a Node<'a, RefCell<Ast>>,
+            index: usize,
             level: usize,
             node_list: &NodeList,
             plain: bool,
@@ -315,7 +316,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                                 ListDelimType::Period => '.',
                                 ListDelimType::Paren => ')',
                             };
-                            (format!("{}{}", node_list.start, delimiter), 2)
+                            (format!("{}{}", index + 1, delimiter), 2)
                         };
                         let indent = " ".repeat(level * 4);
                         let marker_space = " ".repeat(marker_len);
@@ -331,20 +332,21 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                     _ => {
                         eprintln!("💔 Unexpected child in List Item node: {:#?}", child);
                         "💔 Unexpected child in List Item node".to_string()
-                    },
+                    }
                 })
                 .collect()
         }
         let items = list_node
             .children()
-            .map(|child| match child.data.borrow().value {
+            .enumerate()
+            .map(|(index, child)| match child.data.borrow().value {
                 NodeValue::Item(item_node_list) => {
-                    item_node_to_text(child, level, &item_node_list, plain)
+                    item_node_to_text(child, index, level, &item_node_list, plain)
                 }
                 _ => {
                     eprintln!("💔 Unexpected child in List node: {:#?}", child);
                     "💔 Unexpected child in List node".to_string()
-                },
+                }
             })
             .collect::<Vec<String>>()
             .join("");

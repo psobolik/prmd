@@ -6,6 +6,8 @@ description = "Convert Markdown to text with ANSI formatting"
 edition = "2021"
 
 [dependencies]
+ansi-escapes = "0.2.0"
+ansi_term = "0.12.1"
 comrak = "0.27.0"
 
 [dependencies.clap]

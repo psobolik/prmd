@@ -1,3 +1,4 @@
+use ansi_term::{ANSIString, Color, Style};
 use comrak::arena_tree::Node;
 use comrak::nodes::{
     Ast, ListDelimType, ListType, NodeCodeBlock, NodeHeading, NodeHtmlBlock, NodeList, NodeTable,
@@ -16,104 +17,81 @@ pub fn markdown_to_text(md: &str, plain: bool) -> String {
 }
 
 fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
-    fn node_children_to_formatted_text<'a>(
-        node: &'a Node<'a, RefCell<Ast>>,
-        plain: bool,
-        bol: Option<&'a str>,
-        eol: Option<&'a str>,
-    ) -> String {
-        node.children().fold(String::new(), |acc, child| {
-            let eol = eol.unwrap_or_default();
-            let bol = bol.unwrap_or_default();
-            let text = format!("{}{}", acc, text_node_to_text(child, plain));
-            format!("{}{}{}", bol, text, eol)
-        })
-    }
-    fn node_children_to_plain_text<'a>(node: &'a Node<'a, RefCell<Ast>>) -> String {
-        node_children_to_formatted_text(node, true, None, None)
+    fn node_children_to_text<'a>(node: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
+        node.children()
+            .map(|child| text_node_to_text(child, plain))
+            .collect::<Vec<String>>()
+            .join("")
     }
     fn text_node_to_text<'a>(text_node: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
         match &text_node.data.borrow().value {
             NodeValue::Emph => {
+                let text = node_children_to_text(text_node, plain);
                 if plain {
-                    node_children_to_plain_text(text_node)
+                    text
                 } else {
-                    node_children_to_formatted_text(
-                        text_node,
-                        plain,
-                        Some("\x1b[3m"),
-                        Some("\x1b[0m"),
-                    )
+                    Style::new().italic().paint(text).to_string()
                 }
             }
             NodeValue::Strong => {
+                let text = node_children_to_text(text_node, plain);
                 if plain {
-                    node_children_to_plain_text(text_node)
+                    text
                 } else {
-                    node_children_to_formatted_text(
-                        text_node,
-                        plain,
-                        Some("\x1b[1m"),
-                        Some("\x1b[0m"),
-                    )
+                    Style::new().bold().paint(text).to_string()
                 }
             }
             NodeValue::Underline => {
+                let text = node_children_to_text(text_node, plain);
                 if plain {
-                    node_children_to_plain_text(text_node)
+                    text
                 } else {
-                    node_children_to_formatted_text(
-                        text_node,
-                        plain,
-                        Some("\x1b[4m"),
-                        Some("\x1b[0m"),
-                    )
+                    Style::new().underline().paint(text).to_string()
                 }
             }
             NodeValue::Strikethrough => {
+                let text = node_children_to_text(text_node, plain);
                 if plain {
-                    node_children_to_plain_text(text_node)
+                    text
                 } else {
-                    node_children_to_formatted_text(
-                        text_node,
-                        plain,
-                        Some("\x1b[9m"),
-                        Some("\x1b[0m"),
-                    )
+                    Style::new().strikethrough().paint(text).to_string()
                 }
             }
             NodeValue::Code(code) => {
                 if plain {
-                    code.literal.clone()
+                    code.literal.to_string()
                 } else {
-                    format!("\x1b[7m{}\x1b[0m", code.literal)
+                    Style::new()
+                        .fg(Color::White)
+                        .bold()
+                        .on(Color::Fixed(238))
+                        .paint(&code.literal)
+                        .to_string()
                 }
             }
             NodeValue::Link(image) | NodeValue::Image(image) => {
-                let url = format!("[{}]", image.url);
-                let title = if image.title.len() > 0 {
+                let title = if !image.title.is_empty() {
                     format!(r#" "{}""#, image.title)
                 } else {
                     String::from("")
                 };
-                let text = if plain {
-                    node_children_to_plain_text(text_node)
+                let text = node_children_to_text(text_node, plain);
+                let content = if plain {
+                    text.to_string()
                 } else {
-                    node_children_to_formatted_text(
-                        text_node,
-                        plain,
-                        Some("\x1b[4m"),
-                        Some("\x1b[0m"),
-                    )
+                    Style::new().underline().paint(text).to_string()
                 };
-                format!("{}{} {}", text, title, url)
+                format!("{}{} [{}]", content, title, image.url)
             }
             NodeValue::Paragraph => paragraph_node_to_text(text_node, plain),
             NodeValue::SoftBreak => String::from(" "),
             NodeValue::LineBreak => String::from("\n"),
             NodeValue::HtmlInline(html_inline) => html_inline.clone(),
             NodeValue::Text(text) => text.clone(),
-            _ => format!("💔 unexpected child in Text node: {:#?}", text_node),
+            _ => {
+                eprintln!("💔 Unexpected child in Text node: {:#?}", text_node);
+                "💔 Unexpected child in Text node".to_string()
+            },
         }
     }
     fn thematic_break_node_to_text() -> String {
@@ -126,38 +104,47 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
     ) -> String {
         let blockquote = blockquote_node
             .children()
-            .fold(String::new(), |acc, child| {
-                let lead = "│ ".repeat(level + 1);
-                match child.data.borrow().value {
-                    NodeValue::BlockQuote => {
-                        format!(
-                            "{}{}",
-                            acc,
-                            blockquote_node_to_text(child, level + 1, plain)
-                        )
-                    }
-                    _ => format!(
-                        "{}{}\n",
-                        lead,
-                        node_children_to_formatted_text(child, plain, None, None)
-                    ),
+            .map(|child| match child.data.borrow().value {
+                NodeValue::BlockQuote => blockquote_node_to_text(child, level + 1, plain),
+                _ => {
+                    let lead = "│ ".repeat(level + 1);
+                    format!("{}{}\n", lead, node_children_to_text(child, plain))
                 }
-            });
-        if level == 0 {
-            format!("{}\n", blockquote)
-        } else {
-            blockquote
+            })
+            .collect();
+        match level {
+            0 => format!("{}\n", blockquote),
+            _ => blockquote,
         }
     }
     fn code_block_node_to_text(code_block: &mut NodeCodeBlock, plain: bool) -> String {
-        let lines = code_block.literal.lines().fold(String::new(), |acc, line| {
+        let info = if code_block.info.is_empty() {
+            String::default()
+        } else {
+            let info = format!("[{}]\n", code_block.info);
             if plain {
-                format!("{}║ {}\n", acc, line)
+                info
             } else {
-                format!("{}\x1b[97m\x1b[48;5;238m{}\x1b[0K\x1b[0m\n", acc, line)
+                Style::new().reverse().paint(info).to_string()
             }
-        });
-        format!("{}\n", lines)
+        };
+        let lines: Vec<String> = code_block
+            .literal
+            .lines()
+            .map(|line| {
+                if plain {
+                    format!("║ {}", line)
+                } else {
+                    let fancy_line = Style::new()
+                        .fg(Color::White)
+                        .bold()
+                        .on(Color::Fixed(238))
+                        .paint(format!("{}{}", line, ansi_escapes::EraseEndLine));
+                    fancy_line.to_string()
+                }
+            })
+            .collect();
+        format!("{}{}\n\n", info, lines.join("\n"))
     }
     fn html_block_node_to_text(html_block_node: &mut NodeHtmlBlock, _plain: bool) -> String {
         // We don't try to parse HTML
@@ -167,7 +154,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
         paragraph_node: &'a Node<'a, RefCell<Ast>>,
         plain: bool,
     ) -> String {
-        let paragraph = node_children_to_formatted_text(paragraph_node, plain, None, None);
+        let paragraph = node_children_to_text(paragraph_node, plain);
         format!("{}\n\n", paragraph)
     }
     fn heading_node_to_text<'a>(
@@ -175,24 +162,55 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
         heading: &mut NodeHeading,
         plain: bool,
     ) -> String {
-        let ansi = if plain {
-            ""
+        let text = node_children_to_text(node, plain);
+        let heading_text = if plain {
+            ANSIString::from(&text)
         } else {
             match heading.level {
-                1 => "\x1b[1;4m", // Bold, underlined
-                2 => "\x1b[1;3m", // Bold, italic
-                3 => "\x1b[3;4m", // Italic, underlined
-                4 => "\x1b[3m",   // Italic
-                _ => "\x1b[4m",   // Underlined
+                1 => Style::new().bold().underline().paint(&text),
+                2 => Style::new().bold().italic().paint(&text),
+                3 => Style::new().italic().underline().paint(&text),
+                4 => Style::new().underline().paint(&text),
+                _ => Style::new().italic().paint(&text),
             }
         };
-        node_children_to_formatted_text(node, plain, Some(ansi), Some("\x1b[0m\n\n"))
+        format!("{}\n\n", heading_text)
     }
     fn table_node_to_text<'a>(
         table_node: &'a Node<'a, RefCell<Ast>>,
         node_table: &mut NodeTable,
         plain: bool,
     ) -> String {
+        fn max_column_widths<'a>(
+            table_node: &'a Node<'a, RefCell<Ast>>,
+            node_table: &mut NodeTable,
+        ) -> Vec<usize> {
+            let column_widths: Vec<Vec<usize>> = table_node
+                .children()
+                .map(|row| match row.data.borrow().value {
+                    NodeValue::TableRow(_is_header) => row
+                        .children()
+                        .map(|cell| match cell.data.borrow().value {
+                            NodeValue::TableCell => node_children_to_text(cell, true).len(),
+                            _ => 0,
+                        })
+                        .collect(),
+                    _ => vec![],
+                })
+                .collect();
+            let max_column_widths =
+                column_widths
+                    .iter()
+                    .fold(vec![0; node_table.num_columns], |mut acc, row| {
+                        for i in 0..node_table.num_columns {
+                            if row[i] > acc[i] {
+                                acc[i] = row[i];
+                            }
+                        }
+                        acc
+                    });
+            max_column_widths
+        }
         fn table_cell_node_to_text<'a>(
             table_cell_node: &'a Node<'a, RefCell<Ast>>,
             is_header: bool,
@@ -200,7 +218,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
             alignment: TableAlignment,
             plain: bool,
         ) -> String {
-            let plain_content = node_children_to_plain_text(table_cell_node);
+            let plain_content = node_children_to_text(table_cell_node, true);
             let padding = width - plain_content.len();
             let (padding_left, padding_right) = match alignment {
                 TableAlignment::Center => {
@@ -213,17 +231,11 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                     (String::default(), " ".repeat(padding))
                 }
             };
-            let content = if plain {
-                plain_content
-            } else if is_header {
-                node_children_to_formatted_text(
-                    table_cell_node,
-                    plain,
-                    Some("\x1b[1;4m"),
-                    Some("\x1b[0m"),
-                )
+            let text = node_children_to_text(table_cell_node, plain);
+            let content = if is_header && !plain {
+                Style::new().bold().underline().paint(&text)
             } else {
-                node_children_to_formatted_text(table_cell_node, plain, None, None)
+                ANSIString::from(text)
             };
             format!("{}{} {}", padding_left, content, padding_right)
         }
@@ -234,76 +246,43 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
             alignments: &[TableAlignment],
             plain: bool,
         ) -> String {
-            let row =
-                table_row_node
-                    .children()
-                    .enumerate()
-                    .fold(String::new(), |acc, (index, child)| {
-                        match child.data.borrow().value {
-                            NodeValue::TableCell => {
-                                format!(
-                                    "{}{}",
-                                    acc,
-                                    table_cell_node_to_text(
-                                        child,
-                                        is_header,
-                                        column_widths[index],
-                                        alignments[index],
-                                        plain,
-                                    )
-                                )
-                            }
-                            _ => format!(
-                                "{}💔 unexpected child in Table Row Node: {:#?}",
-                                acc, child
-                            ),
-                        }
-                    });
-            format!("{}\n", row)
+            let row: Vec<String> = table_row_node
+                .children()
+                .enumerate()
+                .map(|(index, child)| match child.data.borrow().value {
+                    NodeValue::TableCell => table_cell_node_to_text(
+                        child,
+                        is_header,
+                        column_widths[index],
+                        alignments[index],
+                        plain,
+                    ),
+                    _ => {
+                        eprintln!("💔 Unexpected child in Table Row node: {:#?}", child);
+                        "💔 Unexpected child in Table Row node".to_string()
+                    },
+                })
+                .collect();
+            format!("{}\n", row.join(""))
         }
-        let column_widths: Vec<Vec<usize>> = table_node
+        let max_column_widths = max_column_widths(table_node, node_table);
+        let table: Vec<String> = table_node
             .children()
-            .map(|row| match row.data.borrow().value {
-                NodeValue::TableRow(_is_header) => row
-                    .children()
-                    .map(|cell| match cell.data.borrow().value {
-                        NodeValue::TableCell => node_children_to_plain_text(cell).len(),
-                        _ => 0,
-                    })
-                    .collect(),
-                _ => vec![],
+            .map(|child| match child.data.borrow().value {
+                NodeValue::TableRow(is_header) => table_row_node_to_text(
+                    child,
+                    is_header,
+                    &max_column_widths,
+                    &node_table.alignments,
+                    plain,
+                ),
+                _ => {
+                eprintln!("💔 Unexpected child in Table node: {:#?}", child);
+                "💔 Unexpected child in Table node".to_string()
+                },
             })
             .collect();
-        let max_column_widths =
-            column_widths
-                .iter()
-                .fold(vec![0; node_table.num_columns], |mut acc, row| {
-                    for i in 0..node_table.num_columns {
-                        if row[i] > acc[i] {
-                            acc[i] = row[i];
-                        }
-                    }
-                    acc
-                });
-        let table = table_node.children().fold(String::new(), |acc, child| {
-            match child.data.borrow().value {
-                NodeValue::TableRow(is_header) => {
-                    format!(
-                        "{}{}",
-                        acc,
-                        table_row_node_to_text(
-                            child,
-                            is_header,
-                            &max_column_widths,
-                            &node_table.alignments,
-                            plain,
-                        )
-                    )
-                }
-                _ => format!("{}💔 unexpected child in Table Node: {:#?}", acc, child),
-            }
-        });
-        format!("{}\n", table)
+        format!("{}\n", table.join(""))
     }
     fn list_node_to_text<'a>(
         list_node: &'a Node<'a, RefCell<Ast>>,
@@ -316,13 +295,11 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
             node_list: &NodeList,
             plain: bool,
         ) -> String {
-            item_node.children().fold(String::new(), |acc, child| {
-                match child.data.borrow().value {
-                    NodeValue::List(_node_list) => {
-                        format!("{}{}", acc, list_node_to_text(child, level + 1, plain))
-                    }
+            item_node
+                .children()
+                .map(|child| match child.data.borrow().value {
+                    NodeValue::List(_node_list) => list_node_to_text(child, level + 1, plain),
                     NodeValue::Paragraph => {
-                        // • ▪ ◦
                         let (marker, marker_len) = if node_list.list_type == ListType::Bullet {
                             (
                                 match level {
@@ -340,36 +317,37 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                             };
                             (format!("{}{}", node_list.start, delimiter), 2)
                         };
-                        let lead = " ".repeat(level * 4);
-                        let lead2 = " ".repeat(marker_len + 1);
-                        let text = node_children_to_formatted_text(child, plain, None, None)
+                        let indent = " ".repeat(level * 4);
+                        let marker_space = " ".repeat(marker_len);
+                        node_children_to_text(child, plain)
                             .lines()
                             .enumerate()
-                            .fold(String::new(), |acc, (index, line)| {
-                                let cooked = match index {
-                                    0 => format!("{}{} {}\n", lead, marker, line),
-                                    _ => format!("{} {}{}\n", lead, lead2, line),
-                                };
-                                format!("{}{}", acc, cooked)
-                            });
-                        format!("{} {}", acc, text)
+                            .map(|(index, line)| match index {
+                                0 => format!("{}{} {}\n", indent, marker, line),
+                                _ => format!("{}{} {}\n", indent, marker_space, line),
+                            })
+                            .collect()
                     }
-                    _ => format!("{}💔 unexpected child in List Item Node: {:#?}", acc, child),
-                }
-            })
+                    _ => {
+                        eprintln!("💔 Unexpected child in List Item node: {:#?}", child);
+                        "💔 Unexpected child in List Item node".to_string()
+                    },
+                })
+                .collect()
         }
-        let items = list_node.children().fold(String::new(), |acc, child| {
-            match child.data.borrow().value {
+        let items = list_node
+            .children()
+            .map(|child| match child.data.borrow().value {
                 NodeValue::Item(item_node_list) => {
-                    format!(
-                        "{}{}",
-                        acc,
-                        item_node_to_text(child, level, &item_node_list, plain)
-                    )
+                    item_node_to_text(child, level, &item_node_list, plain)
                 }
-                _ => format!("{}💔 unexpected child in List Node: {:#?}", acc, child),
-            }
-        });
+                _ => {
+                    eprintln!("💔 Unexpected child in List node: {:#?}", child);
+                    "💔 Unexpected child in List node".to_string()
+                },
+            })
+            .collect::<Vec<String>>()
+            .join("");
         if level == 0 {
             format!("{}\n", items)
         } else {
@@ -404,7 +382,10 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
             NodeValue::Table(node_table) => {
                 document.push(table_node_to_text(child, node_table, plain));
             }
-            _ => eprintln!("💔 Unexpected node in Document: {:#?}", child),
+            _ => {
+                eprintln!("💔 Unexpected child in List Item node: {:#?}", child);
+                document.push("💔 Unexpected child in List Item node".to_string());
+            }
         });
     document.join("")
 }

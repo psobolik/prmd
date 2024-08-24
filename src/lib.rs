@@ -168,7 +168,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
         plain: bool,
     ) -> String {
         let paragraph = node_children_to_formatted_text(paragraph_node, plain, None, None);
-        format!("{}\n", paragraph)
+        format!("{}\n\n", paragraph)
     }
     fn heading_node_to_text<'a>(
         node: &'a Node<'a, RefCell<Ast>>,
@@ -303,7 +303,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                 _ => format!("{}💔 unexpected child in Table Node: {:#?}", acc, child),
             }
         });
-        format!("\n{}\n", table)
+        format!("{}\n", table)
     }
     fn list_node_to_text<'a>(
         list_node: &'a Node<'a, RefCell<Ast>>,
@@ -342,7 +342,7 @@ fn ast_to_text<'a>(root: &'a Node<'a, RefCell<Ast>>, plain: bool) -> String {
                         };
                         let lead = " ".repeat(level * 4);
                         let lead2 = " ".repeat(marker_len + 1);
-                        let text = paragraph_node_to_text(child, plain)
+                        let text = node_children_to_formatted_text(child, plain, None, None)
                             .lines()
                             .enumerate()
                             .fold(String::new(), |acc, (index, line)| {

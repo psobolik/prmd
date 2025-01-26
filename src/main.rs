@@ -15,7 +15,12 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let buffer = fs::read_to_string(args.file)
-        .expect("Couldn't read file");
-    print!("{}", prmd::markdown_to_text(buffer.as_str(), args.plain))
+    match fs::read_to_string(&args.file) {
+        Ok(content) => {
+            print!("{}", prmd::markdown_to_text(content.as_str(), args.plain))
+        },
+        Err(error) => {
+            eprintln!("Failed to read file {:?}: {}", args.file, error);
+        }
+    }
 }
